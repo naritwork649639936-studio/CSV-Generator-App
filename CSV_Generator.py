@@ -6,7 +6,7 @@ import re
 # ตั้งค่าหน้าเว็บ
 st.set_page_config(layout="wide", page_title="Advanced Stock Photo Metadata Tool")
 
-st.title("🚀 Advanced Stock Photo Metadata Generator")
+st.title("🚀 Advanced Stock Photo Metadata Generator (Update 10 Keywords)")
 st.markdown("เครื่องมือสร้างไฟล์ CSV สำหรับ Stock Photo พร้อมระบบสุ่ม Keywords และ Title อัจฉริยะ")
 
 # --- ส่วนข้อมูลสำหรับ UI ---
@@ -30,25 +30,25 @@ def clean_keyword_list(text):
     return [w for w in words if w]
 
 def generate_shuffled_keywords(keywords, mode):
-    """สลับตำแหน่ง Keywords ตามโหมด A, B, C"""
+    """สลับตำแหน่ง Keywords ตามโหมด A, B, C (Logic 10 คำ)"""
     if not keywords:
         return ""
     
-    # แยกส่วน 7 คำแรก และส่วนที่เหลือ
-    head = keywords[:7]
-    tail = keywords[7:]
+    # --- จุดที่แก้ไข: เปลี่ยนเลข 7 เป็น 10 ---
+    head = keywords[:10]  # เอา 10 คำแรก
+    tail = keywords[10:]  # เอาคำที่ 11 เป็นต้นไป
     
-    # Mode A: สลับ 7 คำแรก, ส่วนหลังล็อค
+    # Mode A: สลับ 10 คำแรก, ส่วนหลังล็อค
     if mode == "A":
         random.shuffle(head)
         # tail เหมือนเดิม
         
-    # Mode B: 7 คำแรกล็อค, สลับส่วนหลัง
+    # Mode B: 10 คำแรกล็อค, สลับส่วนหลัง
     elif mode == "B":
         # head เหมือนเดิม
         random.shuffle(tail)
         
-    # Mode C: สลับทั้ง 7 คำแรก และ สลับส่วนหลัง
+    # Mode C: สลับทั้ง 10 คำแรก และ สลับส่วนหลัง
     elif mode == "C":
         random.shuffle(head)
         random.shuffle(tail)
@@ -61,7 +61,6 @@ def generate_smart_title(base_title, connector, all_keywords):
     """สร้าง Title ตามเงื่อนไข: Base + Connector + 5 Keywords (ไม่ซ้ำ, <200 chars)"""
     
     # 1. เตรียมคำห้ามซ้ำ (คำที่อยู่ใน Title หลัก)
-    # แยกคำใน Title ออกมาเพื่อเช็ค (ใช้ set เพื่อความเร็วและ unique)
     forbidden_words = set(re.findall(r'\w+', base_title.lower()))
     
     # 2. กรอง Keywords ที่จะเอามาสุ่ม (ต้องไม่ซ้ำกับ Title)
@@ -94,7 +93,7 @@ def generate_smart_title(base_title, connector, all_keywords):
             final_title_str = temp_title
             break
     
-    # ถ้าวนลูปแล้วยังเกิน 200 ให้ตัดเหลือแค่ Base (หรือลดจำนวนคำลง - ในที่นี้เอา Base ก่อนเพื่อความชัวร์)
+    # ถ้าวนลูปแล้วยังเกิน 200 ให้ตัดเหลือแค่ Base
     if not final_title_str:
          final_title_str = f"{base_title} {connector}"
 
@@ -108,13 +107,12 @@ with st.form("metadata_form"):
     col1, col2 = st.columns(2)
     with col1:
         # 1. Adobe Category
-        selected_category_full = st.selectbox("Adobe Category", ADOBE_CATEGORIES, index=2) # Default Business
-        # ดึงเลขออกมา (เช่น "3 - Business" -> "3")
+        selected_category_full = st.selectbox("Adobe Category", ADOBE_CATEGORIES, index=2) 
         category_id = selected_category_full.split(" - ")[0]
         
     with col2:
         # 3. Connector Word
-        connector = st.selectbox("Connector Word", CONNECTORS, index=0) # Default with
+        connector = st.selectbox("Connector Word", CONNECTORS, index=0)
 
     # 2. Title
     base_title = st.text_input("Title (ใส่ได้ไม่เกิน 100 ตัวอักษร)", max_chars=100, value="Quality assurance concept")
@@ -124,18 +122,17 @@ with st.form("metadata_form"):
     raw_keywords = st.text_area("SEO Tags (คั่นด้วยคอมม่า , )", height=150, 
                                 value="assurance, quality, proposal, standard, value, approval, service, review, guarantee, best, performance, client, businessman, procedure")
     
-    # ตัวเลือกโหมดการสุ่ม
+    # ตัวเลือกโหมดการสุ่ม (แก้ไขข้อความ UI ให้ตรงกับ Logic ใหม่)
     st.write("เลือกรูปแบบการสุ่ม Keywords:")
     mode_option = st.radio(
         "Mode Selection",
         [
-            "A: สลับ 7 คำแรก (ส่วนหลังล็อค)", 
-            "B: ล็อค 7 คำแรก (สลับส่วนหลัง)", 
-            "C: สลับ 7 คำแรก และ สลับส่วนหลัง"
+            "A: สลับ 10 คำแรก (ส่วนหลังล็อค)", 
+            "B: ล็อค 10 คำแรก (สลับส่วนหลัง)", 
+            "C: สลับ 10 คำแรก และ สลับส่วนหลัง"
         ]
     )
     
-    # แปลง Choice เป็นตัวแปร mode ("A", "B", "C")
     mode_map = {"A": "A", "B": "B", "C": "C"}
     selected_mode = mode_option.split(":")[0]
 
@@ -150,6 +147,11 @@ if submitted:
     else:
         # เตรียมข้อมูล
         keyword_list = clean_keyword_list(raw_keywords)
+        
+        # เช็คว่ามี Keywords พอ 10 คำไหม (แจ้งเตือนเฉยๆ แต่ยังทำงานต่อได้)
+        if len(keyword_list) < 10:
+            st.warning(f"⚠️ คำเตือน: คุณใส่ Keywords มาแค่ {len(keyword_list)} คำ (แนะนำให้ใส่มากกว่า 10 คำเพื่อให้ระบบทำงานสมบูรณ์)")
+
         data_rows = []
         
         # สร้าง 100 แถว
@@ -157,12 +159,10 @@ if submitted:
             filename = f"custom-{i:02d}.jpg"
             
             # 1. สร้าง Keywords (Column C) ตาม Mode
-            # ต้อง copy list มาใหม่ทุกรอบ เพื่อไม่ให้กระทบต้นฉบับเวลา shuffle
             current_keywords_list = keyword_list[:] 
             final_keywords_str = generate_shuffled_keywords(current_keywords_list, selected_mode)
             
             # 2. สร้าง Title (Column B)
-            # สุ่ม 5 คำจาก Keywords ทั้งหมด (ต้นฉบับ)
             final_title_str = generate_smart_title(base_title, connector, keyword_list)
             
             # เก็บข้อมูล
@@ -171,26 +171,25 @@ if submitted:
                 "Title": final_title_str,
                 "Keywords": final_keywords_str,
                 "Category": category_id,
-                "Releases": "no" # ค่า Default
+                "Releases": "no" 
             })
             
         # สร้าง DataFrame
         df = pd.DataFrame(data_rows)
         
         # แสดงผลลัพธ์
-        st.success("✅ สร้างข้อมูลเสร็จสิ้น! ดูตัวอย่างด้านล่าง")
+        st.success("✅ สร้างข้อมูลเสร็จสิ้น! (Logic: 10 คำแรก)")
         
         st.dataframe(df.head(10), use_container_width=True)
         st.caption(f"แสดง 10 แถวแรกจากทั้งหมด {len(df)} แถว")
         
         # ปุ่ม Download CSV
-        # แปลงเป็น CSV String พร้อม Quoting
         csv = df.to_csv(index=False, quotechar='"', quoting=1)
         
         st.download_button(
             label="💾 Download CSV File",
             data=csv,
-            file_name="generated_metadata_100.csv",
+            file_name="generated_metadata_100_updated.csv",
             mime="text/csv",
             type="primary"
         )
