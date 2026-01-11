@@ -11,23 +11,23 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 # ตั้งค่าหน้าเว็บ
-st.set_page_config(layout="wide", page_title="Structured Stock Metadata Tool (FINAL FIXED)")
+st.set_page_config(layout="wide", page_title="Ultimate Stock Metadata Tool")
 
-st.title("🚀 Structured Stock Photo Metadata Generator")
+st.title("🚀 Ultimate Stock Metadata Generator")
+st.markdown("เครื่องมือสร้าง Metadata ครบวงจร: เลือกได้ทั้งแบบ **ภาษาสวย (Natural)** หรือ **อัดคีย์เวิร์ด (Stuffer)**")
 
-# --- 🔥 โซนบังคับโชว์ API KEY (อยู่บนสุด) ---
-st.markdown("### 🔑 ตั้งค่า OpenAI API Key")
-api_key = st.text_input("วาง API Key ของคุณที่นี่ (sk-...)", type="password", help="ใส่เพื่อใช้โหมด AI ถ้าไม่ใส่ให้ใช้โหมดฟรี")
+# --- 🔥 โซนบังคับโชว์ API KEY ---
+st.markdown("### 🔑 ตั้งค่า OpenAI API Key (Optional)")
+api_key = st.text_input("วาง API Key ของคุณที่นี่ (sk-...) [ใส่เพื่อใช้โหมด AI]", type="password")
 
 if api_key:
-    st.success("✅ รับทราบ API Key แล้ว! คุณสามารถเลือกโหมด AI ด้านล่างได้เลย")
+    st.success("✅ AI Mode Ready!")
 else:
-    st.info("ℹ️ ยังไม่ใส่ Key -> ระบบจะทำงานในโหมด Free Template เท่านั้น")
+    st.info("ℹ️ Running in Free Mode (Template Based)")
 # ------------------------------------------------
 
 st.markdown("---")
 
-# --- ส่วนข้อมูลสำหรับ UI ---
 ADOBE_CATEGORIES = [
     "1 - Animals", "2 - Architecture", "3 - Business", "4 - Drinks", "5 - Nature",
     "6 - Emotions", "7 - Food", "8 - Graphic", "9 - Hobbies", "10 - Industry",
@@ -36,10 +36,16 @@ ADOBE_CATEGORIES = [
     "20 - Transport", "21 - Travel"
 ]
 
+# คลังคำกริยา (Action Verbs)
 ACTIONS = [
     "using", "holding", "analyzing", "presenting", "working on", 
     "checking", "displaying", "looking at", "reviewing", "preparing",
-    "focusing on", "managing", "developing", "creating"
+    "focusing on", "managing", "developing", "creating", "processing"
+]
+
+# คำเชื่อมสำหรับ Stuffer Mode
+CONNECTORS = [
+    "including", "featuring", "related to", "for", "with", "plus", "alongside", "involving", "containing"
 ]
 
 # --- ฟังก์ชันช่วยเหลือ ---
@@ -64,8 +70,9 @@ def generate_shuffled_keywords(keywords, mode):
         
     return ", ".join(head + tail)
 
+# --- Logic: Structured / Natural (แบบเดิม) ---
 def generate_structured_title(subject, keyword_list):
-    """Free Mode Logic"""
+    """Free Mode: สร้าง Title แบบ Natural (Subject + Action + Object + Context)"""
     forbidden_words = set(re.findall(r'\w+', subject.lower()))
     candidate_keywords = [kw for kw in keyword_list if not (set(re.findall(r'\w+', kw.lower())) & forbidden_words)]
     
@@ -88,16 +95,82 @@ def generate_structured_title(subject, keyword_list):
     ]
     return random.choice(templates).capitalize()
 
-def generate_ai_title(client, subject, keyword_list, model="gpt-4o-mini"):
-    """AI Mode Logic"""
-    try:
-        sample_kws = ", ".join(random.sample(keyword_list, min(8, len(keyword_list))))
-        prompt = f"""Write a stock photo title (max 200 chars) using this structure: Subject ({subject}) + Action (verb) + Object (from keywords) + Context/Place. Keywords pool: {sample_kws}. Make it natural. Return ONLY title."""
+# --- Logic: Keyword Stuffer (แบบใหม่) ---
+def generate_greedy_title(subject, keyword_list):
+    """Free Mode: พยายามยัด Keyword ลงไปให้ได้มากที่สุดจนเกือบเต็ม 200 คำ"""
+    forbidden_words = set(re.findall(r'\w+', subject.lower()))
+    candidate_keywords = [kw for kw in keyword_list if not (set(re.findall(r'\w+', kw.lower())) & forbidden_words)]
+    
+    # สุ่มลำดับคำที่จะเอามาเติม
+    random.shuffle(candidate_keywords)
+    
+    # เริ่มต้นประโยค
+    action = random.choice(ACTIONS)
+    base_title = f"{subject} {action}"
+    
+    # ตัวแปรสำหรับวนลูปเติมคำ
+    current_title = base_title
+    used_indices = 0
+    
+    # Loop เติมคำจนกว่าจะเต็ม
+    while used_indices < len(candidate_keywords):
+        word_to_add = candidate_keywords[used_indices]
         
+        # เลือกคำเชื่อม
+        connector = ""
+        if used_indices == 0:
+            connector = f" {random.choice(CONNECTORS)}" # คำแรกต้องมีคำเชื่อม
+        elif used_indices % 3 == 0: 
+            connector = f" {random.choice(CONNECTORS)}" # ทุก 3 คำเปลี่ยนคำเชื่อม
+        else:
+            connector = "," # ใช้ลูกน้ำคั่นปกติ
+            
+        # เช็คความยาว: ถ้าเติมแล้วเกิน 195 ตัวอักษร ให้หยุด
+        potential_segment = f"{connector} {word_to_add}"
+        if len(current_title) + len(potential_segment) > 195:
+            break
+            
+        current_title += potential_segment
+        used_indices += 1
+    
+    # Clean up
+    current_title = current_title.strip(',')
+    return current_title[0].upper() + current_title[1:]
+
+# --- AI Generator (รวมศูนย์) ---
+def generate_ai_title_unified(client, subject, keyword_list, strategy, model="gpt-4o-mini"):
+    try:
+        # 1. Strategy: Natural
+        if strategy == "Natural":
+            sample_kws = ", ".join(random.sample(keyword_list, min(8, len(keyword_list))))
+            prompt = f"""
+            Write a stock photo title (max 200 chars).
+            Structure: Subject ({subject}) + Action (verb) + Object + Context.
+            Use keywords: {sample_kws}.
+            Style: Natural, Professional, Grammatically correct sentence.
+            Return ONLY the title.
+            """
+            
+        # 2. Strategy: Stuffer
+        else:
+            all_kws_str = ", ".join(keyword_list) # ส่งไปหมดเลย
+            prompt = f"""
+            Write a Stock Photo Title for subject: "{subject}".
+            Goal: Maximize keyword usage up to 200 characters.
+            Keywords pool: [{all_kws_str}]
+            Constraints:
+            - Start with "{subject} [Action]..."
+            - Stuff as many keywords as possible.
+            - Use connectors (featuring, including, with, for) to make it a valid sentence.
+            - NO filler adjectives (e.g. beautiful, amazing).
+            - Max length strictly 200 chars.
+            Return ONLY the title string.
+            """
+
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=60,
+            max_tokens=100,
             temperature=0.7,
         )
         return response.choices[0].message.content.strip().replace('"', '')
@@ -106,33 +179,41 @@ def generate_ai_title(client, subject, keyword_list, model="gpt-4o-mini"):
 
 # --- UI Layout ---
 with st.form("metadata_form"):
-    st.subheader("1. เลือกโหมด & หมวดหมู่")
+    st.subheader("1. ตั้งค่าการทำงาน")
     
-    col_mode, col_cat = st.columns([1, 1])
-    with col_mode:
-        # --- ปรับปรุงตรงนี้: เพิ่มตัวเลือก Model กลับมาแล้ว ---
-        mode_options = [
-            "🆓 Free Mode (Template)", 
-            "🧠 AI Mode (GPT-4o Mini) - ประหยัด", 
-            "🔥 AI Mode (GPT-4o) - ตัวท็อป"
-        ]
-        title_mode = st.radio("ระบบสร้าง Title:", mode_options)
-    
-    with col_cat:
-        selected_category_full = st.selectbox("Adobe Category", ADOBE_CATEGORIES, index=2) 
-        category_id = selected_category_full.split(" - ")[0]
+    col1, col2 = st.columns(2)
+    with col1:
+        # เลือกโหมด AI/Free
+        if api_key:
+            mode_options = ["🧠 AI Mode (GPT-4o Mini)", "🔥 AI Mode (GPT-4o - ตัวท็อป)", "🆓 Free Mode"]
+        else:
+            mode_options = ["🆓 Free Mode", "🧠 AI Mode (ต้องใส่ Key ก่อน)"]
+        title_mode = st.radio("ระบบประมวลผล (Processing Mode):", mode_options)
+        
+    with col2:
+        # เลือกกลยุทธ์ Title
+        strategy = st.radio(
+            "กลยุทธ์ Title (Strategy):", 
+            ["Balanced / Natural (เน้นภาษาสวย อ่านง่าย)", "Keyword Stuffer (เน้นอัดคีย์เวิร์ดเต็ม 200 คำ)"],
+            help="Balanced: เหมาะกับภาพ Portrait/General | Stuffer: เหมาะกับภาพ Business/Concept ที่ต้องการดักคำเยอะๆ"
+        )
+        strategy_key = "Natural" if "Balanced" in strategy else "Stuffer"
 
     st.markdown("---")
     
     col_input1, col_input2 = st.columns(2)
     with col_input1:
         subject = st.text_input("Subject / ประธาน (เช่น Asian businessman)", value="Asian businessman")
-    
-    st.subheader("2. จัดการ Keywords")
-    raw_keywords = st.text_area("Keywords (Object & Context)", height=150, value="tablet, graph, office, success, growth, 2026, strategy, financial")
-    
-    st.write("รูปแบบการสุ่ม Keywords:")
-    mode_option = st.radio("Mode Selection", ["A: สลับ 10 คำแรก", "B: ล็อค 10 คำแรก", "C: สลับหมด"])
+        selected_category_full = st.selectbox("Adobe Category", ADOBE_CATEGORIES, index=2) 
+        category_id = selected_category_full.split(" - ")[0]
+        
+    with col_input2:
+        # Keywords
+        raw_keywords = st.text_area("Keywords (สำหรับ Stuffer ควรใส่มาเยอะๆ 20+ คำ)", height=108, 
+                                    value="tablet, graph, office, success, growth, 2026, strategy, financial, planning, digital, team, corporate, laptop, wireless, data, analysis, market, investment, report, document")
+
+    st.write("รูปแบบการสุ่ม Keywords (ช่อง Keywords Column):")
+    mode_option = st.radio("Rotation Mode", ["A: สลับ 10 คำแรก", "B: ล็อค 10 คำแรก", "C: สลับหมด"], horizontal=True)
     selected_mode = mode_option.split(":")[0]
 
     st.markdown("---")
@@ -143,24 +224,20 @@ with st.form("metadata_form"):
 if submitted:
     if not subject or not raw_keywords:
         st.error("กรุณาใส่ข้อมูลให้ครบก่อนครับ")
-    # เช็คว่าเลือก AI Mode แต่ลืมใส่ Key หรือไม่
     elif "AI Mode" in title_mode and not api_key:
-        st.error("⛔️ คุณเลือกโหมด AI แต่ยังไม่ใส่ API Key ด้านบนครับ! กรุณาใส่ Key หรือเปลี่ยนเป็น Free Mode")
+        st.error("⛔️ เลือกโหมด AI แต่ลืมใส่ Key ด้านบนครับ!")
     else:
         keyword_list = clean_keyword_list(raw_keywords)
         client = None
         
-        # Setup AI Client
         if "AI Mode" in title_mode:
             if not OPENAI_AVAILABLE:
-                st.error("❌ เครื่องคุณยังไม่มี openai library! (pip install openai)")
+                st.error("❌ เครื่องคุณยังไม่มี openai library!")
                 st.stop()
             client = OpenAI(api_key=api_key)
 
-        # Select Model based on user choice
-        model_name = "gpt-4o-mini" # default
-        if "GPT-4o" in title_mode:
-            model_name = "gpt-4o"
+        model_name = "gpt-4o-mini"
+        if "GPT-4o" in title_mode: model_name = "gpt-4o"
 
         progress_bar = st.progress(0)
         data_rows = []
@@ -169,14 +246,17 @@ if submitted:
             progress_bar.progress(i / num_rows)
             filename = f"custom-{i:02d}.jpg"
             
-            # Keywords
+            # Keywords Column
             kw_str = generate_shuffled_keywords(keyword_list[:], selected_mode)
             
-            # Title
+            # Title Generation
             if "AI Mode" in title_mode:
-                final_title = generate_ai_title(client, subject, keyword_list, model=model_name)
+                final_title = generate_ai_title_unified(client, subject, keyword_list, strategy_key, model=model_name)
             else:
-                final_title = generate_structured_title(subject, keyword_list)
+                if strategy_key == "Stuffer":
+                    final_title = generate_greedy_title(subject, keyword_list)
+                else:
+                    final_title = generate_structured_title(subject, keyword_list)
             
             data_rows.append({
                 "Filename": filename, "Title": final_title, 
@@ -184,7 +264,11 @@ if submitted:
             })
             
         df = pd.DataFrame(data_rows)
-        st.success(f"✅ เสร็จแล้วครับ! (ใช้โหมด: {title_mode})")
-        st.dataframe(df.head())
+        st.success(f"✅ เสร็จสิ้น! (Mode: {title_mode} | Strategy: {strategy_key})")
         
-        st.download_button("💾 Download CSV", df.to_csv(index=False, quotechar='"', quoting=1), "final_metadata.csv", "text/csv", type="primary")
+        # Preview Title Length
+        df['Len'] = df['Title'].apply(len)
+        st.dataframe(df[['Title', 'Len']].head())
+        
+        df_download = df.drop(columns=['Len'])
+        st.download_button("💾 Download CSV", df_download.to_csv(index=False, quotechar='"', quoting=1), "ultimate_metadata.csv", "text/csv", type="primary")
