@@ -11,10 +11,10 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 # ตั้งค่าหน้าเว็บ
-st.set_page_config(layout="wide", page_title="Ultimate Metadata Tool (Fixed UI)")
+st.set_page_config(layout="wide", page_title="Ultimate Metadata Tool (Strict 200 Limit)")
 
 st.title("🚀 Ultimate Stock Metadata Generator")
-st.markdown("เครื่องมือสร้าง Metadata ครบวงจร (Free & AI)")
+st.markdown("เครื่องมือสร้าง Metadata ครบวงจร (Free & AI) - **Strict 200 Characters**")
 st.markdown("---")
 
 # ==========================================
@@ -44,7 +44,6 @@ with st.form("metadata_form"):
     )
 
     # 2.2 เลือก Model (จะโชว์ก็ต่อเมื่อเลือก AI Mode หรือโชว์ไปเลยก็ได้เพื่อความชัวร์)
-    # เพื่อความชัดเจน ผมโชว์ให้เห็นเลยแต่ Disable ถ้าไม่ได้เลือก AI
     st.subheader("🅱️ เลือกโมเดล AI (AI Model)")
     ai_model_select = st.radio(
         "เลือกความฉลาด (ถ้าใช้โหมด AI):",
@@ -56,7 +55,7 @@ with st.form("metadata_form"):
     st.subheader("🆎 เลือกกลยุทธ์ Title (Strategy)")
     strategy = st.radio(
         "ต้องการ Title สไตล์ไหน?", 
-        ["Balanced / Natural (เน้นภาษาสวย อ่านง่าย)", "Keyword Stuffer (เน้นอัดคีย์เวิร์ดเต็ม 200 คำ)"],
+        ["Balanced / Natural (เน้นภาษาสวย อ่านง่าย)", "Keyword Stuffer (เน้นอัดคีย์เวิร์ด ห้ามเกิน 200 ตัวอักษร)"],
         horizontal=True
     )
     strategy_key = "Natural" if "Balanced" in strategy else "Stuffer"
@@ -98,7 +97,7 @@ with st.form("metadata_form"):
             "Mode C: สลับทั้งหมด (กระจายความเสี่ยงสูงสุด)"
         ]
     )
-    # Logic การตัด string เพื่อเอา A, B, C
+    
     if "Mode A" in mode_option: selected_mode = "A"
     elif "Mode B" in mode_option: selected_mode = "B"
     else: selected_mode = "C"
@@ -130,6 +129,7 @@ def generate_shuffled_keywords(keywords, mode):
         random.shuffle(temp)
         return ", ".join(temp)
     
+    # แบ่ง 10 คำแรก กับ ส่วนหลัง
     head = keywords[:10]
     tail = keywords[10:]
     
@@ -143,15 +143,18 @@ def generate_shuffled_keywords(keywords, mode):
         
     return ", ".join(head + tail)
 
-# Logic Generators
+# --- Logic Generators (Updated) ---
+
 def generate_structured_title(subject, keyword_list):
-    """Free Mode: Natural"""
+    """Free Mode: Natural (Short & Sweet)"""
     forbidden_words = set(re.findall(r'\w+', subject.lower()))
     candidate_keywords = [kw for kw in keyword_list if not (set(re.findall(r'\w+', kw.lower())) & forbidden_words)]
     if len(candidate_keywords) < 3: return f"{subject} concept with {', '.join(candidate_keywords)}"
+    
     action = random.choice(ACTIONS)
     picks = random.sample(candidate_keywords, 3)
     obj1, obj2, context = picks[0], picks[1], picks[2]
+    
     templates = [
         f"{subject} {action} {obj1} and {obj2} in {context} setting",
         f"{subject} {action} {obj1} for {obj2} concept",
@@ -165,25 +168,47 @@ def generate_structured_title(subject, keyword_list):
     return random.choice(templates).capitalize()
 
 def generate_greedy_title(subject, keyword_list):
-    """Free Mode: Stuffer"""
+    """
+    Free Mode: Stuffer (Strict 200 chars limit)
+    เติม Keywords ไปเรื่อยๆ จนกว่าจะเต็ม 200 ตัวอักษร (ห้ามเกิน)
+    """
+    # 1. กรองคำซ้ำกับ Subject
     forbidden_words = set(re.findall(r'\w+', subject.lower()))
     candidate_keywords = [kw for kw in keyword_list if not (set(re.findall(r'\w+', kw.lower())) & forbidden_words)]
     random.shuffle(candidate_keywords)
+    
+    # 2. ตั้งต้น Title ด้วย Subject + Action
     action = random.choice(ACTIONS)
-    base_title = f"{subject} {action}"
-    current_title = base_title
-    used_indices = 0
-    while used_indices < len(candidate_keywords):
-        word_to_add = candidate_keywords[used_indices]
-        connector = ""
-        if used_indices == 0: connector = f" {random.choice(CONNECTORS)}"
-        elif used_indices % 3 == 0: connector = f" {random.choice(CONNECTORS)}"
-        else: connector = "," 
-        potential_segment = f"{connector} {word_to_add}"
-        if len(current_title) + len(potential_segment) > 195: break
-        current_title += potential_segment
-        used_indices += 1
-    return current_title.strip(',')[0].upper() + current_title.strip(',')[1:]
+    current_title = f"{subject} {action}" 
+    
+    # 3. วนลูปเติมคำ
+    for i, word in enumerate(candidate_keywords):
+        # กำหนดคำเชื่อม (Prefix)
+        if i == 0:
+            # คำแรกต้องมี connector เสมอ
+            prefix = f" {random.choice(CONNECTORS)} "
+        elif i % 4 == 0: 
+            # ทุกๆ 4 คำ ให้ใส่ connector เพื่อความสวยงาม (ไม่ให้ comma ยาวเป็นพรืด)
+            prefix = f" {random.choice(CONNECTORS)} "
+        else:
+            # ปกติใช้ comma
+            prefix = ", "
+            
+        potential_segment = f"{prefix}{word}"
+        
+        # 4. เช็คความยาวก่อนเติม (หัวใจสำคัญ)
+        if len(current_title) + len(potential_segment) <= 200:
+            current_title += potential_segment
+        else:
+            # ถ้าเติมแล้วเกิน 200 ให้หยุดทันที
+            break
+            
+    # 5. จัด Format ตัวแรกพิมพ์ใหญ่
+    final_title = current_title.strip()
+    if final_title:
+        final_title = final_title[0].upper() + final_title[1:]
+        
+    return final_title
 
 def generate_ai_title_unified(client, subject, keyword_list, strategy, model_choice):
     try:
@@ -194,19 +219,28 @@ def generate_ai_title_unified(client, subject, keyword_list, strategy, model_cho
             sample_kws = ", ".join(random.sample(keyword_list, min(8, len(keyword_list))))
             prompt = f"Write a stock photo title (max 200 chars). Structure: Subject ({subject}) + Action (verb) + Object + Context. Use keywords: {sample_kws}. Style: Natural, Professional. Return ONLY title."
         else:
+            # Prompt สำหรับ Stuffer Mode (AI) - กำชับเรื่องความยาว
             all_kws_str = ", ".join(keyword_list)
-            prompt = f"Write a Stock Photo Title for subject: \"{subject}\". Goal: Maximize keyword usage up to 200 characters. Keywords pool: [{all_kws_str}]. Start with \"{subject} [Action]...\". Stuff keywords using connectors. Max 200 chars. Return ONLY title."
+            prompt = f"Write a Stock Photo Title starting with \"{subject}\". Goal: Stuff as many keywords as possible from this list: [{all_kws_str}]. STRICT LIMIT: 200 CHARACTERS. Do not exceed 200 chars. Use commas or short connectors. Return ONLY the title text."
 
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=100,
+            max_tokens=150, # เผื่อไว้นิดหน่อย
             temperature=0.7,
         )
-        return response.choices[0].message.content.strip().replace('"', '')
+        # ตัดเหลือ 200 อีกรอบเพื่อความชัวร์ในฝั่ง AI
+        result = response.choices[0].message.content.strip().replace('"', '')
+        if len(result) > 200:
+            result = result[:200].rsplit(' ', 1)[0] # ตัดที่ช่องว่างสุดท้ายเพื่อไม่ให้คำขาด
+            
+        return result
     except Exception as e:
         return f"AI Error: {str(e)}"
 
+# ==========================================
+# Main Execution
+# ==========================================
 if submitted:
     if not subject or not raw_keywords:
         st.error("กรุณาใส่ข้อมูลให้ครบก่อนครับ")
@@ -241,7 +275,11 @@ if submitted:
             
         df = pd.DataFrame(data_rows)
         st.success("✅ เสร็จสิ้น!")
+        
+        # แสดงผลลัพธ์พร้อมความยาว Title เพื่อตรวจสอบ
         df['Len'] = df['Title'].apply(len)
+        st.caption("ตัวอย่างผลลัพธ์ (ช่อง Len แสดงจำนวนตัวอักษร - ต้องไม่เกิน 200)")
         st.dataframe(df[['Title', 'Len']].head())
+        
         df_download = df.drop(columns=['Len'])
-        st.download_button("💾 Download CSV", df_download.to_csv(index=False, quotechar='"', quoting=1), "ultimate_metadata_fixed.csv", "text/csv", type="primary")
+        st.download_button("💾 Download CSV", df_download.to_csv(index=False, quotechar='"', quoting=1), "metadata_stuffer_strict.csv", "text/csv", type="primary")
